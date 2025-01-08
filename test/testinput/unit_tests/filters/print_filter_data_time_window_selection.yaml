@@ -1,0 +1,38 @@
+time window:
+  begin: 2019-12-29T21:00:02Z
+  end: 2019-12-29T21:00:10Z
+
+observations:
+- obs space:
+    name: atms
+    obsdatain:
+      engine:
+        type: H5File
+        obsfile: Data/ufo/testinput_tier_1/atms_n20_obs_20191230T0000_rttov.nc4
+    simulated variables: [brightnessTemperature]
+    channels: 1-22
+  obs filters:
+  - filter: Print Filter Data
+    output to test stream: true
+    message: Printing ATMS channels
+    variables:
+    - variable:
+        name: ObsValue/brightnessTemperature
+        channels: 1-7, 15-28, 100
+  - filter: Print Filter Data
+    output to test stream: true
+    message: Printing ATMS channels with `where` statement
+    where:
+    - variable:
+       name: MetaData/latitude
+      minvalue: 67
+    variables:
+    - variable: MetaData/latitude
+    - variable:
+        name: ObsValue/brightnessTemperature
+        channels: 1-22
+
+  passedBenchmark: 704
+
+test:
+ reference filename: testref/unit_tests/filters/print_filter_data_time_window_selection.ref

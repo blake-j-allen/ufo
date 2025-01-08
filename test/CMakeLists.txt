@@ -123,6 +123,7 @@ ecbuild_add_resources( TARGET ufo_test_scripts
 list( APPEND ufo_test_ref
   testref/unit_tests/filters/print_filter_data.ref
   testref/unit_tests/filters/print_filter_data_MPI2_rank0.ref
+  testref/unit_tests/filters/print_filter_data_time_window_selection.ref
 )
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/testref)

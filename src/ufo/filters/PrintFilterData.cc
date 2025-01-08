@@ -253,26 +253,58 @@ void PrintFilterData::printAllData() const {
   }
   obsdb_.distribution()->allGatherv(globalApply);
   // Obtain global indices of each location in the ObsSpace.
+  // These are the indices of observations in the original data sample.
+  // When gathered, they may be out of order due to the ObsSpace distribution (e.g. Round Robin).
+  // Additionally, the list of indices may contain gaps if observations have been rejected
+  // due to being outside of the timing window.
+  // For example, consider an input sample with six locations (numbered 0-5).
+  // Locations 0 and 5 lie outside the time window. The input sample is distributed across
+  // two MPI ranks. The obsdb_.index() vectors therefore contain [2, 4] and [1, 3].
+  // The gathered version of this is [2, 4, 1, 3].
   const std::vector<std::size_t> index = obsdb_.index();
   std::vector<int> globalIndex(index.begin(), index.end());
   obsdb_.distribution()->allGatherv(globalIndex);
 
-  // Determine which locations to print.
+  // Determine a vector of indices that can be used to sort globalIndex such that its contents
+  // are in ascending order.
+  // In the simple example, this vector is equal to [2, 0, 3, 1].
+  std::vector<int> sortIndices(nlocs);
+  std::iota(sortIndices.begin(), sortIndices.end(), 0);
+  std::stable_sort(sortIndices.begin(), sortIndices.end(),
+                   [&globalIndex](int idx1, int idx2)
+                   {return globalIndex[idx1] < globalIndex[idx2];});
+
+  // Permute global indices to ensure they represent the order of observations
+  // in the input data set.
+  // In the simple example, permutedGlobalIndex is equal to [1, 2, 3, 4].
+  std::vector<int> permutedGlobalIndex(nlocs);
+  for (std::size_t idx = 0; idx < nlocs; ++idx) {
+    permutedGlobalIndex[idx] = globalIndex[sortIndices[idx]];
+  }
+
+  // Determine which locations to print in the table headings.
+  // These correspond to the locations in the original input data set.
   std::vector<int> locsToPrint;
   // Also record the indices of these locations in the global location vector.
   std::vector<int> indicesToPrint;
-
-  for (size_t idx = 0; idx < globalIndex.size(); ++idx) {
-    const int loc = std::distance(globalIndex.begin(),
-                                  std::find(globalIndex.begin(), globalIndex.end(), idx));
-    if (idx >= locmin && idx < locmax && globalApply[loc]) {
-      indicesToPrint.push_back(idx);
+  // In the simple example, assuming no restrictions on the location value
+  // or `apply` vector, the output vectors are as follows:
+  // - locsToPrint: [1, 2, 3, 4]
+  // - indicesToPrint: [2, 0, 3, 1]
+  for (std::size_t idx = 0; idx < nlocs; ++idx) {
+    const int loc = permutedGlobalIndex[idx];
+    if (loc >= locmin && loc < locmax && globalApply[sortIndices[loc]]) {
       locsToPrint.push_back(loc);
+      indicesToPrint.push_back(sortIndices[loc]);
     }
   }
 
   // Rows of locations (and corresponding indices in the global location vector)
   // to print in the output table.
+  // In the simple example, given nlocsPerRow equal to 3, the output vectors of vectors
+  // are as follows:
+  // - rowOfLocsToPrint: [[1, 2, 3], [4]]
+  // - rowOfIndicesToPrint: [[2, 0, 3], [1]]
   std::vector<std::vector<int>> rowOfLocsToPrint;
   std::vector<std::vector<int>> rowOfIndicesToPrint;
   int count = 0;
@@ -289,13 +321,18 @@ void PrintFilterData::printAllData() const {
   }
 
   // Print each row in turn.
+  // In the simple example, this will print one row with Location heading
+  // 1, 2, 3 and variable values at indices [2, 0, 3] in the global sample,
+  // and a second row with Location heading 4 and variable values at index 1
+  // in the global sample.
+  // This output is independent of the number of MPI ranks used.
   for (int i = 0; i < rowOfLocsToPrint.size(); ++i) {
     const auto locGroup = rowOfLocsToPrint[i];
     const auto idxGroup = rowOfIndicesToPrint[i];
     // Print table header.
     os_ << std::setw(maxVariableNameLength) << "Location" << " | ";
-    for (int idx : idxGroup)
-      os_ << std::setw(columnWidth) << idx << " | ";
+    for (int loc : locGroup)
+      os_ << std::setw(columnWidth) << loc << " | ";
     os_ << std::endl;
     // Print division bar below header.
     os_ << std::string(maxVariableNameLength, '-') << "-+-";
@@ -315,8 +352,8 @@ void PrintFilterData::printAllData() const {
           if (filterData_.find(MultiLevelVariableName) == filterData_.end())
             continue;
           os_ << std::setw(maxVariableNameLength) << MultiLevelVariableName << " | ";
-          for (int loc : locGroup) {
-            this->printVariable<float>(MultiLevelVariableName, loc);
+          for (int idx : idxGroup) {
+            this->printVariable<float>(MultiLevelVariableName, idx);
             os_ << " | ";
           }
           os_ << std::endl;
@@ -327,22 +364,22 @@ void PrintFilterData::printAllData() const {
           if (filterData_.find(varname) == filterData_.end())
             continue;
           os_ << std::setw(maxVariableNameLength) << varname << " | ";
-          for (int loc : locGroup) {
+          for (int idx : idxGroup) {
             switch (data_.dtype(variable)) {
             case ioda::ObsDtype::Integer:
-              this->printVariable<int>(varname, loc);
+              this->printVariable<int>(varname, idx);
               break;
             case ioda::ObsDtype::Float:
-              this->printVariable<float>(varname, loc);
+              this->printVariable<float>(varname, idx);
               break;
             case ioda::ObsDtype::String:
-              this->printVariable<std::string>(varname, loc);
+              this->printVariable<std::string>(varname, idx);
               break;
             case ioda::ObsDtype::DateTime:
-              this->printVariable<util::DateTime>(varname, loc);
+              this->printVariable<util::DateTime>(varname, idx);
               break;
             case ioda::ObsDtype::Bool:
-              this->printVariable<bool>(varname, loc);
+              this->printVariable<bool>(varname, idx);
               break;
             default:
               break;
