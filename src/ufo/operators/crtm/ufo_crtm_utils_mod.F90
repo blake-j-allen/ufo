@@ -1277,7 +1277,7 @@ end function uv_to_wdir
        ALLOCATE(var_aerosols(n_aerosols_gocart_geos))
        var_aerosols=var_aerosols_gocart_geos
     ELSEIF (cmp_strings(aerosol_option,"aerosols_gocart_rrfs")) THEN
-       ALLOCATE(var_aerosols(n_aerosols_gocart_geos))
+       ALLOCATE(var_aerosols(n_aerosols_gocart_rrfs))
        var_aerosols=var_aerosols_gocart_rrfs
     ELSE
        WRITE(err_msg,*) 'assign_aerosol_names: aerosol_option not implemented'&
